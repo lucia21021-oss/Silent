@@ -1,8 +1,8 @@
 {
-    "display_name": "Silent Summarizer (Mobile)",
-    "author": "User",
-    "version": "1.0.0",
-    "js": "index.js",
-    "css": "style.css",
-    "type": "extension"
+  "display_name": "Silent Summarizer (Sidebar)",
+  "author": "User",
+  "version": "35.0.0",
+  "js": "index.js",
+  "css": "style.css",
+  "type": "extension"
 }
