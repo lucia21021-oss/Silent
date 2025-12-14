@@ -52,16 +52,17 @@
     };
     const getChat = () => (window.SillyTavern && window.SillyTavern.getContext) ? window.SillyTavern.getContext().chat : (window.chat || []);
 
-    // 2. 侧边栏 (最简注入)
+    // 2. 侧边栏 (最简注入，轮询直到成功)
     function injectSidebar() {
         // 寻找容器：首选 extensions_settings，次选 left-nav-panel (旧版)
         const container = document.getElementById('extensions_settings') || document.getElementById('rm_extensions_block');
-        if (!container) return setTimeout(injectSidebar, 500); // 没找到就死等，500ms查一次
-        if ($('ss-drawer')) return;
+        if (!container) return; // 下次interval再试
+        
+        if ($('ss-drawer')) return; // 已存在
 
         const html = `
         <div class="inline-drawer" id="ss-drawer">
-            <div class="inline-drawer-header inline-drawer-to
+            <div class="inline-drawer-header inline-drawer-toggle" id="s
                 // 3. 主面板构建
     function createMainUI() {
         if ($('ss-panel')) return;
