@@ -1,6 +1,6 @@
 (function() {
     try {
-    // === 1. 初始化配置与变量 ===
+    // === 1. 初始化 ===
     const DEFAULT_PROMPT = `# 剧情总结助手
 
 你是一个专业的剧情总结助手，负责分析对话文本并生成结构化的剧情总结。
@@ -31,55 +31,66 @@
             url: localStorage.getItem('ss_url') || 'https://api.openai.com/v1',
             key: localStorage.getItem('ss_key') || '',
             model: localStorage.getItem('ss_model') || 'gpt-3.5-turbo',
-            customPrompt: localStorage.getItem('ss_custom_prompt') || '', 
-            ballVisible: localStorage.getItem('ss_ball_visible') === 'true'
+            customPrompt: localStorage.getItem('ss_custom_prompt') || ''
         },
         history: JSON.parse(localStorage.getItem('ss_history') || '[]'),
         modelsList: []
     };
 
-    // 注入CSS
     if(!document.getElementById('ss-styles')) {
         const style = document.createElement('style');
         style.id = 'ss-styles';
-        style.textContent = `/* 侧边栏样式 */.ss-drawer-content { padding: 8px; background: rgba(0,0,0,0.4); border-radius: 4px; }.ss-setting-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }.ss-btn-sidebar { flex: 1; background: #374151; color: #eee; border: 1px solid #4b5563; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap:4px; }.ss-btn-sidebar:hover { background: #4b5563; }.ss-btn-action { background: #1f2937; margin-bottom: 8px; width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; color: white; font-weight: bold; font-size: 14px; }.ss-toggle-on { background: #059669; border-color: #047857; }/* 悬浮球 (最高层级) */#ss-float-btn {    position: fixed; bottom: 150px; right: 20px;    width: 48px; height: 48px;    background: #4f46e5; border-radius: 50%;    color: white; display: none; /* 默认隐藏 */    align-items: center; justify-content: center;    box-shadow: 0 4px 20px rgba(0,0,0,0.6);    z-index: 999999; cursor: pointer; font-size: 22px;    border: 2px solid rgba(255,255,255,0.3);    user-select: none; touch-action: none;}#ss-float-btn:active { transform: scale(0.9); }/* 主面板 (顶部定位) */#ss-panel {    position: fixed;     top: 5vh; left: 50%;     transform: translateX(-50%);    width: 95%; max-width: 450px;     height: 85vh;    background-color: #111827; border: 1px solid #374151;    border-radius: 12px; box-shadow: 0 10px 50px rgba(0,0,0,0.9);    z-index: 999998; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif; font-size: 14px;}.ss-header { padding: 12px 16px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; flex-shrink: 0; }.ss-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #1f2937; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; }.ss-tab { flex: 1; text-align: center; padding: 12px 0; font-size: 11px; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; }.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.05); border-bottom-color: #818cf8; }/* 通用控件 */.ss-textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; }.ss-textarea-light { background: #fff; color: #000; border: 1px solid #ccc; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #e5e7eb; border: 1px solid #4b5563; }.ss-input-dark { width: 100%; background: #030712; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }.ss-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }.ss-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }`;
+        style.textContent = `/* 侧边栏样式 */.ss-drawer-content { padding: 8px; background: rgba(0,0,0,0.4); border-radius: 4px; }.ss-setting-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }.ss-btn-sidebar { flex: 1; background: #374151; color: #eee; border: 1px solid #4b5563; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap:4px; }.ss-btn-sidebar:hover { background: #4b5563; }.ss-btn-action { background: #1f2937; margin-bottom: 8px; width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; color: white; font-weight: bold; font-size: 14px; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }/* 主面板 (固定居中) */#ss-panel {    position: fixed;     top: 50%; left: 50%;     transform: translate(-50%, -50%); /* 完完全全居中 */    width: 90%; max-width: 500px;     height: 80vh; max-height: 800px;    background-color: #111827; border: 1px solid #374151;    border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.9);    z-index: 20000; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif; font-size: 14px;}.ss-header { padding: 12px 16px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; flex-shrink: 0; }.ss-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #1f2937; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; }.ss-tab { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; color: #9ca3af; cursor: pointer; border-bottom: 3px solid transparent; user-select: none;}.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.1); border-bottom-color: #818cf8; }/* 通用控件 */.ss-textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; }.ss-textarea-light { background: #fff; color: #000; border: 1px solid #ccc; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #e5e7eb; border: 1px solid #4b5563; }.ss-input-dark { width: 100%; background: #030712; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }.ss-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }`;
         document.head.appendChild(style);
     }
-
     const $ = (id) => document.getElementById(id);
     const saveConfig = () => {
         localStorage.setItem('ss_url', STATE.config.url);
         localStorage.setItem('ss_key', STATE.config.key);
         localStorage.setItem('ss_model', STATE.config.model);
         localStorage.setItem('ss_custom_prompt', STATE.config.customPrompt);
-        localStorage.setItem('ss_ball_visible', STATE.config.ballVisible);
     };
-    
-    // 兼容获取聊天记录
-    const getChat = () => (window.SillyTavern && window.SillyTavern.getConte
-                               // === 3. 主面板构建 ===
+    const getChat = () => (window.SillyTavern && window.SillyTavern.getContext) ? window.SillyTavern.getContext().chat : (window.chat || []);
+
+    // === 2. 侧边栏注入 (使用安全轮询) ===
+    function injectSidebar(container) {
+        if ($('ss-drawer')) return;
+        
+        const html = `
+        <div class="inline-drawer" id="ss-drawer">
+            <div class="inline-drawer-header inline-drawer-toggle" id="ss-drawer-header">
+                <b>⚡ 剧情总结助手</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down" id="ss-drawer-icon"></div>
+            </div>
+            <div class="inline-drawer-content" id="ss-drawer-content" style="display:none">
+                <!-- 核心入口按钮 -->
+                <div class="ss-setting-row">
+
+     // === 3. 主面板构建 ===
     function createMainUI() {
         if ($('ss-panel')) return;
         const root = document.createElement('div');
         root.innerHTML = `
-        <div id="ss-float-btn">📝</div>
         <div id="ss-panel">
-            <div class="ss-header"><span>全功能面板</span><span id="ss-close" style="cursor:pointer">✖</span></div>
+            <div class="ss-header">
+                <span>⚡ 剧情总结助手 (完整版)</span>
+                <span id="ss-close" style="cursor:pointer; padding:5px;">✖</span>
+            </div>
             
             <div class="ss-content active" id="tab-sum">
                 <div class="ss-setting-row">
-                    <input id="ss-m-start" class="ss-input-dark" type="number" placeholder="起始">
-                    <input id="ss-m-end" class="ss-input-dark" type="number" placeholder="结束">
+                    <input id="ss-m-start" class="ss-input-dark" type="number" placeholder="起始层">
+                    <input id="ss-m-end" class="ss-input-dark" type="number" placeholder="结束层">
                 </div>
                 <button id="ss-m-gen" class="ss-btn-primary">生成详细总结</button>
-                <textarea id="ss-m-out" class="ss-textarea ss-textarea-dark" style="height:200px; margin-top:10px"></textarea>
+                <textarea id="ss-m-out" class="ss-textarea ss-textarea-dark" style="height:300px; margin-top:10px"></textarea>
             </div>
 
             <div class="ss-content" id="tab-hide">
                 <div class="ss-label">批量隐藏楼层</div>
                 <input id="ss-hide-s" class="ss-input-dark" placeholder="起始楼层 ID">
                 <input id="ss-hide-e" class="ss-input-dark" placeholder="结束楼层 ID">
-                <button id="ss-do-hide" class="ss-btn-primary ss-btn-danger">执行隐藏</button>
+                <button id="ss-do-hide" class="ss-btn-primary" style="background:#b91c1c;">执行隐藏</button>
             </div>
 
             <div class="ss-content" id="tab-auto">
@@ -114,16 +125,18 @@
                 </div>
                 <button class="ss-btn-primary" style="background:#059669; height:30px; font-size:12px; margin-bottom:15px" onclick="window.ssSaveProfile()">保存当前配置到选中存档</button>
 
-                <div class="ss-label">API Endpoint</div>
+                <div class="ss-label">API Endpoint (例如 https://api.openai.com/v1)</div>
                 <input id="ss-set-url" class="ss-input-dark" value="${STATE.config.url}">
                 <div class="ss-label">API Key</div>
                 <input id="ss-set-key" class="ss-input-dark" type="password" value="${STATE.config.key}">
+                
                 <div class="ss-btn-group" style="margin-top:10px">
                     <button id="ss-fetch-models" class="ss-btn-primary" style="flex:1">📡 获取模型列表</button>
                 </div>
-                <div class="ss-label">Select Model</div>
+                <div class="ss-label">选择模型</div>
                 <select id="ss-model-select" class="ss-input-dark" style="display:none"></select>
                 <input id="ss-set-model" class="ss-input-dark" value="${STATE.config.model}" placeholder="或手动输入模型名称">
+                
                 <hr style="border:0; border-top:1px solid #374151; margin:15px 0">
                 <div class="ss-label">系统提示词 (留空则使用默认)</div>
                 <textarea id="ss-set-prompt" class="ss-textarea ss-textarea-dark" style="height:100px" placeholder="默认提示词隐藏中...如需修改请在此输入">${STATE.config.customPrompt}</textarea>
@@ -140,9 +153,7 @@
             </div>
         </div>`;
         document.body.appendChild(root);
-        bindMainEvents();
-        updateBallState();
-    }
+
             // === 4. 逻辑与事件 ===
     let currentSlot = 1;
     window.ssLoadProfile = (id) => {
@@ -214,20 +225,21 @@
         btn.innerText = originTxt; btn.disabled=false;
     }
 
-    function updateBallState() { const ball = $('ss-float-btn'); if(ball) ball.style.display = STATE.config.ballVisible ? 'flex' : 'none'; }
-
     function bindMainEvents() {
-        const ball = $('ss-float-btn');
-        let isDragging=false, offX=0, offY=0;
-        ball.addEventListener('touchstart', e=>{ isDragging=true; offX=e.touches[0].clientX-ball.offsetLeft; offY=e.touches[0].clientY-ball.offsetTop; });
-        document.addEventListener('touchmove', e=>{ if(isDragging){ e.preventDefault(); ball.style.left=(e.touches[0].clientX-offX)+'px'; ball.style.top=(e.touches[0].clientY-offY)+'px'; ball.style.right='auto'; ball.style.bottom='auto'; } }, {passive:false});
-        document.addEventListener('touchend', ()=>isDragging=false);
-        ball.onclick = () => { if(!isDragging) $('ss-panel').style.display = 'flex'; };
         $('ss-close').onclick = () => $('ss-panel').style.display = 'none';
         $('ss-m-gen').onclick = () => doSummary('ss-m-start', 'ss-m-end', 'ss-m-out', 'ss-m-gen');
         $('ss-fetch-models').onclick = fetchModels;
         $('ss-save-prompt').onclick = () => { STATE.config.customPrompt = $('ss-set-prompt').value; $('ss-sb-prompt').value = STATE.config.customPrompt; saveConfig(); alert('提示词已更新'); };
+        
         window.ssActivateTab = (tabId) => {
             document.querySelectorAll('.ss-tab').forEach(t => t.dataset.t === tabId ? t.classList.add('active') : t.classList.remove('active'));
-            document.querySelectorAll(
-                
+            document.querySelectorAll('.ss-content').forEach(c => c.id === tabId ? c.classList.add('active') : c.classList.remove('active'));
+        };
+        document.querySelectorAll('.ss-tab').forEach(t => t.onclick = () => { window.ssActivateTab(t.dataset.t); if(t.dataset.t==='tab-hist') window.renderHist(); if(t.dataset.t==='tab-wb') window.refreshWB(); });
+        
+        window.renderHist = () => {
+            const c=$('ss-hist-list'); c.innerHTML='';
+            STATE.history.forEach(h=>{
+                const d=document.createElement('div'); d.className='ss-hist-item';
+                d.innerHTML=`<b>${h.time}</b><div style="font-size:11px;color:#aaa;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${h.content}</div>`;
+                d.onclick=()=>$('ss-m-out').value=h.content; c.appendChild(d);
