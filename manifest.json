@@ -1,0 +1,9 @@
+{
+  "display_name": "Silent Summary",
+  "loading_order": 1,
+  "requires": [],
+  "version": "1.0.0",
+  "author": "User",
+  "js": "index.js",
+  "css": "style.css"
+}
