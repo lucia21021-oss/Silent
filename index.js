@@ -1,6 +1,6 @@
 (function() {
     try {
-    // === 1. 初始化 ===
+    // 1. 初始化
     const DEFAULT_PROMPT = `# 剧情总结助手
 
 你是一个专业的剧情总结助手，负责分析对话文本并生成结构化的剧情总结。
@@ -40,7 +40,7 @@
     if(!document.getElementById('ss-styles')) {
         const style = document.createElement('style');
         style.id = 'ss-styles';
-        style.textContent = `/* 侧边栏样式 */.ss-drawer-content { padding: 8px; background: rgba(0,0,0,0.4); border-radius: 4px; }.ss-setting-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }.ss-btn-sidebar { flex: 1; background: #374151; color: #eee; border: 1px solid #4b5563; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap:4px; }.ss-btn-sidebar:hover { background: #4b5563; }.ss-btn-action { background: #1f2937; margin-bottom: 8px; width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; color: white; font-weight: bold; font-size: 14px; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }/* 主面板 (固定居中) */#ss-panel {    position: fixed;     top: 50%; left: 50%;     transform: translate(-50%, -50%); /* 完完全全居中 */    width: 90%; max-width: 500px;     height: 80vh; max-height: 800px;    background-color: #111827; border: 1px solid #374151;    border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.9);    z-index: 20000; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif; font-size: 14px;}.ss-header { padding: 12px 16px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; flex-shrink: 0; }.ss-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #1f2937; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; }.ss-tab { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; color: #9ca3af; cursor: pointer; border-bottom: 3px solid transparent; user-select: none;}.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.1); border-bottom-color: #818cf8; }/* 通用控件 */.ss-textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; }.ss-textarea-light { background: #fff; color: #000; border: 1px solid #ccc; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #e5e7eb; border: 1px solid #4b5563; }.ss-input-dark { width: 100%; background: #030712; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }.ss-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }`;
+        style.textContent = `/* 侧边栏样式 - 完美适配 SillyTavern */.ss-drawer-content { padding: 8px; background: rgba(0,0,0,0.2); }.ss-setting-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px; }.ss-btn-sidebar { flex: 1; background: #374151; color: #eee; border: 1px solid #4b5563; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap:4px; transition: background 0.2s; }.ss-btn-sidebar:hover { background: #4b5563; }.ss-btn-action { background: #1f2937; margin-bottom: 8px; width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; color: white; font-weight: bold; font-size: 13px; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }/* 主面板 - 绝对居中 (不再飞到顶部) */#ss-panel {    position: fixed;     top: 50%; left: 50%;     transform: translate(-50%, -50%);    width: 90%; max-width: 480px;     height: 80vh; max-height: 750px;    background-color: #0b0f19; /* 更深一点的背景 */    border: 1px solid #374151;    border-radius: 12px;     box-shadow: 0 0 50px rgba(0,0,0,0.8);    z-index: 20000; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif; font-size: 14px;}.ss-header { padding: 12px 16px; background: #111827; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; flex-shrink: 0; border-radius: 12px 12px 0 0; }.ss-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #111827; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; border-radius: 0 0 12px 12px; }.ss-tab { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; color: #9ca3af; cursor: pointer; border-bottom: 3px solid transparent; user-select: none; transition: color 0.2s; }.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.1); border-bottom-color: #818cf8; }/* 通用控件 */.ss-textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; }.ss-textarea-light { background: #fff; color: #000; border: 1px solid #ccc; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #e5e7eb; border: 1px solid #4b5563; }.ss-input-dark { width: 100%; background: #1f2937; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }.ss-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }`;
         document.head.appendChild(style);
     }
     const $ = (id) => document.getElementById(id);
@@ -52,31 +52,28 @@
     };
     const getChat = () => (window.SillyTavern && window.SillyTavern.getContext) ? window.SillyTavern.getContext().chat : (window.chat || []);
 
-    // === 2. 侧边栏注入 (使用安全轮询) ===
-    function injectSidebar(container) {
+    // 2. 侧边栏 (最简注入)
+    function injectSidebar() {
+        // 寻找容器：首选 extensions_settings，次选 left-nav-panel (旧版)
+        const container = document.getElementById('extensions_settings') || document.getElementById('rm_extensions_block');
+        if (!container) return setTimeout(injectSidebar, 500); // 没找到就死等，500ms查一次
         if ($('ss-drawer')) return;
-        
+
         const html = `
         <div class="inline-drawer" id="ss-drawer">
-            <div class="inline-drawer-header inline-drawer-toggle" id="ss-drawer-header">
-                <b>⚡ 剧情总结助手</b>
-                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down" id="ss-drawer-icon"></div>
-            </div>
-            <div class="inline-drawer-content" id="ss-drawer-content" style="display:none">
-                <!-- 核心入口按钮 -->
-                <div class="ss-setting-row">
-
-     // === 3. 主面板构建 ===
+            <div class="inline-drawer-header inline-drawer-to
+                // 3. 主面板构建
     function createMainUI() {
         if ($('ss-panel')) return;
         const root = document.createElement('div');
         root.innerHTML = `
         <div id="ss-panel">
             <div class="ss-header">
-                <span>⚡ 剧情总结助手 (完整版)</span>
-                <span id="ss-close" style="cursor:pointer; padding:5px;">✖</span>
+                <span>⚡ 剧情总结助手</span>
+                <span id="ss-close" style="cursor:pointer; padding:8px;">✖</span>
             </div>
             
+            <!-- Tab 1: 总结 -->
             <div class="ss-content active" id="tab-sum">
                 <div class="ss-setting-row">
                     <input id="ss-m-start" class="ss-input-dark" type="number" placeholder="起始层">
@@ -86,6 +83,7 @@
                 <textarea id="ss-m-out" class="ss-textarea ss-textarea-dark" style="height:300px; margin-top:10px"></textarea>
             </div>
 
+            <!-- Tab 2: 隐藏 -->
             <div class="ss-content" id="tab-hide">
                 <div class="ss-label">批量隐藏楼层</div>
                 <input id="ss-hide-s" class="ss-input-dark" placeholder="起始楼层 ID">
@@ -93,19 +91,21 @@
                 <button id="ss-do-hide" class="ss-btn-primary" style="background:#b91c1c;">执行隐藏</button>
             </div>
 
+            <!-- Tab 3: 自动 -->
             <div class="ss-content" id="tab-auto">
                 <div class="ss-setting-row" style="color:white;">
                     <input type="checkbox" id="ss-auto-toggle" style="width:20px; height:20px"> <span>启用自动后台总结</span>
                 </div>
                 <div class="ss-label">触发间隔 (每N层)</div>
                 <input id="ss-auto-int" type="number" class="ss-input-dark" value="30">
-                <div id="ss-auto-status" style="color:#10b981; font-size:12px; margin-top:5px"></div>
             </div>
 
+            <!-- Tab 4: 历史 -->
             <div class="ss-content" id="tab-hist">
                 <div id="ss-hist-list"></div>
             </div>
 
+            <!-- Tab 5: 世界书 -->
             <div class="ss-content" id="tab-wb">
                 <div class="ss-label">目标世界书</div>
                 <select id="ss-wb-select" class="ss-input-dark"></select>
@@ -114,6 +114,7 @@
                 <button id="ss-save-wb" class="ss-btn-primary">存入世界书</button>
             </div>
 
+            <!-- Tab 6: 设置 (API) -->
             <div class="ss-content" id="tab-set">
                 <div class="ss-label" style="margin-top:0">配置存档 (5个槽位)</div>
                 <div class="ss-btn-group">
@@ -125,7 +126,7 @@
                 </div>
                 <button class="ss-btn-primary" style="background:#059669; height:30px; font-size:12px; margin-bottom:15px" onclick="window.ssSaveProfile()">保存当前配置到选中存档</button>
 
-                <div class="ss-label">API Endpoint (例如 https://api.openai.com/v1)</div>
+                <div class="ss-label">API Endpoint</div>
                 <input id="ss-set-url" class="ss-input-dark" value="${STATE.config.url}">
                 <div class="ss-label">API Key</div>
                 <input id="ss-set-key" class="ss-input-dark" type="password" value="${STATE.config.key}">
@@ -133,13 +134,12 @@
                 <div class="ss-btn-group" style="margin-top:10px">
                     <button id="ss-fetch-models" class="ss-btn-primary" style="flex:1">📡 获取模型列表</button>
                 </div>
-                <div class="ss-label">选择模型</div>
                 <select id="ss-model-select" class="ss-input-dark" style="display:none"></select>
-                <input id="ss-set-model" class="ss-input-dark" value="${STATE.config.model}" placeholder="或手动输入模型名称">
+                <input id="ss-set-model" class="ss-input-dark" value="${STATE.config.model}" placeholder="模型名称">
                 
                 <hr style="border:0; border-top:1px solid #374151; margin:15px 0">
-                <div class="ss-label">系统提示词 (留空则使用默认)</div>
-                <textarea id="ss-set-prompt" class="ss-textarea ss-textarea-dark" style="height:100px" placeholder="默认提示词隐藏中...如需修改请在此输入">${STATE.config.customPrompt}</textarea>
+                <div class="ss-label">系统提示词</div>
+                <textarea id="ss-set-prompt" class="ss-textarea ss-textarea-dark" style="height:100px">${STATE.config.customPrompt}</textarea>
                 <button id="ss-save-prompt" class="ss-btn-primary" style="margin-top:10px">仅保存提示词</button>
             </div>
 
@@ -153,8 +153,9 @@
             </div>
         </div>`;
         document.body.appendChild(root);
-
-            // === 4. 逻辑与事件 ===
+        bindMainEvents();
+            }
+            // 4. 逻辑实现
     let currentSlot = 1;
     window.ssLoadProfile = (id) => {
         currentSlot = id;
@@ -229,7 +230,7 @@
         $('ss-close').onclick = () => $('ss-panel').style.display = 'none';
         $('ss-m-gen').onclick = () => doSummary('ss-m-start', 'ss-m-end', 'ss-m-out', 'ss-m-gen');
         $('ss-fetch-models').onclick = fetchModels;
-        $('ss-save-prompt').onclick = () => { STATE.config.customPrompt = $('ss-set-prompt').value; $('ss-sb-prompt').value = STATE.config.customPrompt; saveConfig(); alert('提示词已更新'); };
+        $('ss-save-prompt').onclick = () => { STATE.config.customPrompt = $('ss-set-prompt').value; saveConfig(); alert('提示词已更新'); };
         
         window.ssActivateTab = (tabId) => {
             document.querySelectorAll('.ss-tab').forEach(t => t.dataset.t === tabId ? t.classList.add('active') : t.classList.remove('active'));
@@ -243,3 +244,6 @@
                 const d=document.createElement('div'); d.className='ss-hist-item';
                 d.innerHTML=`<b>${h.time}</b><div style="font-size:11px;color:#aaa;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${h.content}</div>`;
                 d.onclick=()=>$('ss-m-out').value=h.content; c.appendChild(d);
+            });
+        };
+        window.refreshWB = () => {
