@@ -5,20 +5,18 @@
             url: localStorage.getItem('ss_url') || 'https://api.openai.com/v1',
             key: localStorage.getItem('ss_key') || '',
             model: localStorage.getItem('ss_model') || 'gpt-3.5-turbo',
-            prompt: localStorage.getItem('ss_prompt') || '# 剧情总结助手\n\n【核心事件】...',
+            prompt: localStorage.getItem('ss_prompt') || '# 剧情总结助手\n\n【核心事件】[一句话概括]...',
             ballVisible: localStorage.getItem('ss_ball_visible') === 'true'
         },
         history: JSON.parse(localStorage.getItem('ss_history') || '[]'),
-        autoTimer: null,
-        logs: []
+        autoTimer: null
     };
 
-    // === 2. 注入样式 ===
+    // 注入 CSS
     const style = document.createElement('style');
-    style.textContent = `/* Silent Summarizer Styles *//* 侧边栏注入样式 */.ss-drawer-content { padding: 10px; background: rgba(0,0,0,0.2); }.ss-setting-item { margin-bottom: 12px; }.ss-setting-item label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }.ss-full-input { width: 100%; background: #fff; color: #000; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }.ss-checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #eee; font-weight: bold; }/* 悬浮球 (默认隐藏) */#ss-float-btn {    position: fixed; bottom: 120px; right: 20px;    width: 50px; height: 50px;    background: #4f46e5; border-radius: 50%;    color: white; display: none; /* 由侧边栏控制显示 */    align-items: center; justify-content: center;    box-shadow: 0 4px 15px rgba(0,0,0,0.5);    z-index: 9999; cursor: pointer; font-size: 24px;    border: 2px solid rgba(255,255,255,0.2);    user-select: none; touch-action: none; transition: transform 0.1s;}#ss-float-btn:active { transform: scale(0.95); }/* 主界面面板 */#ss-panel {    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);    width: 95%; max-width: 450px; height: 85vh;    background-color: #111827; border: 1px solid #374151;    border-radius: 12px; box-shadow: 0 0 50px rgba(0,0,0,0.9);    z-index: 10000; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif;}.ss-header { padding: 15px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }.ss-content { flex: 1; overflow-y: auto; padding: 15px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #1f2937; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; }.ss-tab { flex: 1; text-align: center; padding: 12px 5px; font-size: 11px; color: #9ca3af; cursor: pointer; white-space: nowrap; }.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.1); }/* 通用组件 */.ss-input, .ss-select { width: 100%; background: #030712; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn { width: 100%; padding: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; margin-bottom: 10px; color: white; display: flex; align-items: center; justify-content: center; gap: 5px; }.ss-btn-primary { background: #4f46e5; }.ss-btn-danger { background: #7f1d1d; color: #fecaca; }.ss-textarea { width: 100%; height: 120px; background: rgba(0,0,0,0.3); border: 1px solid #374151; color: #d1d5db; padding: 10px; border-radius: 8px; resize: none; box-sizing: border-box; }.ss-history-item { background: #1f2937; padding: 10px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #374151; font-size: 12px; cursor: pointer; }.ss-row { display: flex; gap: 10px; }`;
+    style.textContent = `/* 侧边栏样式优化 */.ss-drawer-content { padding: 5px; background: rgba(0,0,0,0.2); }.ss-setting-row { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }.ss-btn-sidebar { width: 100%; background: #1f2937; color: #eee; border: 1px solid #374151; padding: 6px; cursor: pointer; border-radius: 4px; margin-bottom: 5px; }.ss-btn-sidebar:hover { background: #374151; }.ss-label-small { font-size: 12px; color: #888; margin-bottom: 2px; display: block; }.ss-toggle-btn { background: #059669; color: white; border: none; }.ss-toggle-off { background: #4b5563; }/* 悬浮球 (默认由侧边栏控制) */#ss-float-btn {    position: fixed; bottom: 120px; right: 20px;    width: 50px; height: 50px;    background: #4f46e5; border-radius: 50%;    color: white; display: none; /* 默认隐藏 */    align-items: center; justify-content: center;    box-shadow: 0 4px 15px rgba(0,0,0,0.5);    z-index: 9999; cursor: pointer; font-size: 24px;    border: 2px solid rgba(255,255,255,0.2);    user-select: none; touch-action: none;}/* 主面板 (全功能) */#ss-panel {    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);    width: 95%; max-width: 450px; height: 85vh;    background-color: #111827; border: 1px solid #374151;    border-radius: 12px; box-shadow: 0 0 50px rgba(0,0,0,0.9);    z-index: 10000; display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif;}.ss-header { padding: 15px; background: #1f2937; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }.ss-content { flex: 1; overflow-y: auto; padding: 15px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #1f2937; border-top: 1px solid #374151; overflow-x: auto; flex-shrink: 0; }.ss-tab { flex: 1; text-align: center; padding: 12px 5px; font-size: 11px; color: #9ca3af; cursor: pointer; white-space: nowrap; }.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.1); }.ss-textarea { width: 100%; background: #fff; color: #000; border: 1px solid #ccc; padding: 5px; border-radius: 4px; resize: vertical; box-sizing: border-box; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #444; }.ss-input-dark { width: 100%; background: #030712; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; }.ss-history-item { padding: 8px; border-bottom: 1px solid #333; cursor: pointer; }`;
     document.head.appendChild(style);
 
-    // 辅助函数
     const $ = (id) => document.getElementById(id);
     const saveConfig = () => {
         localStorage.setItem('ss_url', STATE.config.url);
@@ -28,39 +26,38 @@
         localStorage.setItem('ss_ball_visible', STATE.config.ballVisible);
     };
     const getChat = () => (window.SillyTavern && window.SillyTavern.getContext) ? window.SillyTavern.getContext().chat : (window.chat || []);
-        // === 3. 侧边栏注入 ===
+        // === 2. 侧边栏注入 ===
     function injectSidebar() {
         const container = document.getElementById('extensions_settings');
-        if (!container) return setTimeout(injectSidebar, 1000); // 等待 ST 加载
+        if (!container) return setTimeout(injectSidebar, 1000); 
+        if ($('ss-drawer')) return; 
 
-        if ($('ss-drawer-content')) return; // 防止重复注入
-
+        // 仅保留：楼层选择、Prompt折叠、立即总结、结果、复制、悬浮球开关
         const html = `
-        <div class="inline-drawer">
-            <div class="inline-drawer-header inline-drawer-toggle" id="ss-drawer-toggle">
-                <b>⚡ 剧情总结助手 V35</b>
-                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+        <div class="inline-drawer" id="ss-drawer">
+            <div class="inline-drawer-header inline-drawer-toggle" id="ss-drawer-header">
+                <b>⚡ 剧情总结助手</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down" id="ss-drawer-icon"></div>
             </div>
             <div class="inline-drawer-content" id="ss-drawer-content" style="display:none">
-                <div class="ss-setting-item">
-                    <label>API URL</label>
-                    <input id="ss-sb-url" class="ss-full-input" type="text" value="${STATE.config.url}">
+                <div class="ss-setting-row">
+                    <input id="ss-sb-start" class="ss-full-input" type="number" placeholder="起始层(0)">
+                    <input id="ss-sb-end" class="ss-full-input" type="number" placeholder="结束层(末)">
                 </div>
-                <div class="ss-setting-item">
-                    <label>API Key</label>
-                    <input id="ss-sb-key" class="ss-full-input" type="password" value="${STATE.config.key}">
+                
+                <button id="ss-sb-toggle-prompt" class="ss-btn-sidebar">设置提示词 (点击展开)</button>
+                <textarea id="ss-sb-prompt" class="ss-textarea" style="display:none; height:100px; margin-bottom:5px">${STATE.config.prompt}</textarea>
+                
+                <button id="ss-sb-gen" class="menu_button" style="width:100%; margin-bottom:5px">立即总结</button>
+                <textarea id="ss-sb-out" class="ss-textarea" style="height:120px; margin-bottom:5px" placeholder="总结结果..."></textarea>
+                
+                <div class="ss-setting-row">
+                    <button id="ss-sb-copy" class="ss-btn-sidebar" style="flex:1">复制结果</button>
+                    <button id="ss-sb-ball-toggle" class="ss-btn-sidebar ${STATE.config.ballVisible?'ss-toggle-btn':'ss-toggle-off'}" style="flex:1">
+                        ${STATE.config.ballVisible ? '隐藏悬浮球' : '显示悬浮球'}
+                    </button>
                 </div>
-                <div class="ss-setting-item">
-                    <label>模型名称</label>
-                    <input id="ss-sb-model" class="ss-full-input" type="text" value="${STATE.config.model}">
-                </div>
-                <div class="ss-setting-item">
-                    <label class="ss-checkbox-label">
-                        <input type="checkbox" id="ss-sb-ball" ${STATE.config.ballVisible ? 'checked' : ''}>
-                        显示悬浮球 (开启后点击球体打开主面板)
-                    </label>
-                </div>
-                <button id="ss-sb-save" class="menu_button">保存设置</button>
+                <div class="ss-label-small" style="text-align:center">更多功能(历史/隐藏/世界书/API设置)请打开悬浮球</div>
             </div>
         </div>`;
         
@@ -68,64 +65,64 @@
         wrapper.innerHTML = html;
         container.appendChild(wrapper);
 
-        // 绑定侧边栏事件
-        $('ss-drawer-toggle').onclick = () => {
-            const content = $('ss-drawer-content');
-            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        // 修复折叠事件 (使用 stopPropagation)
+        $('ss-drawer-header').onclick = (e) => {
+            e.stopPropagation();
+            const c = $('ss-drawer-content');
+            const icon = $('ss-drawer-icon');
+            const isHidden = c.style.display === 'none';
+            c.style.display = isHidden ? 'block' : 'none';
+            icon.className = isHidden ? 'inline-drawer-icon fa-solid fa-circle-chevron-up' : 'inline-drawer-icon fa-solid fa-circle-chevron-down';
         };
-        $('ss-sb-save').onclick = () => {
-            STATE.config.url = $('ss-sb-url').value;
-            STATE.config.key = $('ss-sb-key').value;
-            STATE.config.model = $('ss-sb-model').value;
-            STATE.config.ballVisible = $('ss-sb-ball').checked;
-            saveConfig();
-            updateBallVisibility();
-            alert('设置已保存');
+
+        // 事件绑定
+        $('ss-sb-toggle-prompt').onclick = () => {
+            const p = $('ss-sb-prompt');
+            p.style.display = p.style.display === 'none' ? 'block' : 'none';
         };
-        $('ss-sb-ball').onchange = (e) => {
-            STATE.config.ballVisible = e.target.checked;
+        $('ss-sb-prompt').onchange = (e) => { STATE.config.prompt = e.target.value; saveConfig(); };
+        $('ss-sb-ball-toggle').onclick = (e) => {
+            STATE.config.ballVisible = !STATE.config.ballVisible;
             updateBallVisibility();
             saveConfig();
-        }
+            e.target.innerText = STATE.config.ballVisible ? '隐藏悬浮球' : '显示悬浮球';
+            e.target.className = `ss-btn-sidebar ${STATE.config.ballVisible?'ss-toggle-btn':'ss-toggle-off'}`;
+        };
+        $('ss-sb-copy').onclick = () => {
+            navigator.clipboard.writeText($('ss-sb-out').value);
+            alert('已复制');
+        };
+        $('ss-sb-gen').onclick = () => doSummary('ss-sb-start', 'ss-sb-end', 'ss-sb-out', 'ss-sb-gen');
     }
-        // === 4. 主界面构建 ===
+        // === 3. 主面板构建 ===
     function createMainUI() {
         const root = document.createElement('div');
         root.innerHTML = `
         <div id="ss-float-btn">📝</div>
         <div id="ss-panel">
-            <div class="ss-header">
-                <span>剧情助手功能面板</span>
-                <span id="ss-close" style="cursor:pointer">✖</span>
-            </div>
+            <div class="ss-header"><span>全功能面板</span><span id="ss-close" style="cursor:pointer">✖</span></div>
             
             <!-- Tab 1: 总结 -->
             <div class="ss-content active" id="tab-sum">
-                <div class="ss-row">
-                    <input type="number" id="ss-start" class="ss-input" placeholder="起始楼层">
-                    <input type="number" id="ss-end" class="ss-input" placeholder="结束楼层">
+                <div class="ss-setting-row">
+                    <input id="ss-m-start" class="ss-input-dark" type="number" placeholder="起始">
+                    <input id="ss-m-end" class="ss-input-dark" type="number" placeholder="结束">
                 </div>
-                <button id="ss-do-sum" class="ss-btn ss-btn-primary">生成总结</button>
-                <textarea id="ss-out" class="ss-textarea" placeholder="结果..."></textarea>
+                <button id="ss-m-gen" class="ss-btn-primary">生成总结</button>
+                <textarea id="ss-m-out" class="ss-textarea ss-textarea-dark" style="height:150px; margin-top:10px"></textarea>
             </div>
 
             <!-- Tab 2: 隐藏 -->
             <div class="ss-content" id="tab-hide">
-                <div class="ss-row">
-                    <input type="number" id="ss-hide-s" class="ss-input" placeholder="Start">
-                    <input type="number" id="ss-hide-e" class="ss-input" placeholder="End">
-                </div>
-                <button id="ss-do-hide" class="ss-btn ss-btn-danger">执行隐藏</button>
-                <button id="ss-reset-hide" class="ss-btn" style="background:#374151">恢复可见</button>
+                <input id="ss-hide-s" class="ss-input-dark" placeholder="Start ID">
+                <input id="ss-hide-e" class="ss-input-dark" placeholder="End ID">
+                <button id="ss-do-hide" class="ss-btn-primary" style="background:#7f1d1d">隐藏指定范围</button>
             </div>
 
             <!-- Tab 3: 自动 -->
             <div class="ss-content" id="tab-auto">
-                <label class="ss-checkbox-label" style="color:#fff; margin-bottom:10px">
-                    <input type="checkbox" id="ss-auto-toggle"> 启用自动托管
-                </label>
-                <input type="number" id="ss-auto-int" class="ss-input" placeholder="间隔 (层)" value="30">
-                <div id="ss-auto-status" style="font-size:12px; color:#059669"></div>
+                <label style="color:white"><input type="checkbox" id="ss-auto-toggle"> 开启自动托管</label>
+                <div id="ss-auto-status" style="color:#059669; margin-top:10px"></div>
             </div>
 
             <!-- Tab 4: 历史 -->
@@ -135,14 +132,19 @@
 
             <!-- Tab 5: 世界书 -->
             <div class="ss-content" id="tab-wb">
-                <select id="ss-wb-select" class="ss-select"></select>
-                <button id="ss-save-wb" class="ss-btn ss-btn-primary">存入当前总结</button>
+                <select id="ss-wb-select" class="ss-input-dark"></select>
+                <button id="ss-save-wb" class="ss-btn-primary">存入世界书</button>
             </div>
 
-            <!-- Tab 6: 更多设置 -->
+            <!-- Tab 6: 设置 (API在这里) -->
             <div class="ss-content" id="tab-set">
-                <div class="ss-setting-item"><label>Prompt</label><textarea id="ss-prompt" class="ss-textarea">${STATE.config.prompt}</textarea></div>
-                <button id="ss-sync-save" class="ss-btn ss-btn-primary">保存提示词</button>
+                <label style="color:#aaa">API URL</label>
+                <input id="ss-set-url" class="ss-input-dark" value="${STATE.config.url}">
+                <label style="color:#aaa">API Key</label>
+                <input id="ss-set-key" class="ss-input-dark" type="password" value="${STATE.config.key}">
+                <label style="color:#aaa">Model</label>
+                <input id="ss-set-model" class="ss-input-dark" value="${STATE.config.model}">
+                <button id="ss-set-save" class="ss-btn-primary">保存配置</button>
             </div>
 
             <div class="ss-tab-bar">
@@ -163,112 +165,94 @@
         const ball = $('ss-float-btn');
         if(ball) ball.style.display = STATE.config.ballVisible ? 'flex' : 'none';
     }
-        // === 5. 核心逻辑 ===
-    async function generateSummary(text) {
-        const url = STATE.config.url.replace(/\/+$/, '');
-        const endpoint = url.includes('v1') ? `${url}/chat/completions` : `${url}/v1/chat/completions`;
+        // === 4. 逻辑实现 ===
+    async function doSummary(startId, endId, outId, btnId) {
+        const chat = getChat();
+        const start = parseInt($(startId).value)||0;
+        const end = parseInt($(endId).value)||(chat.length-1);
+        const btn = $(btnId);
         
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${STATE.config.key}` },
-            body: JSON.stringify({
-                model: STATE.config.model,
-                messages: [{role: "system", content: STATE.config.prompt}, {role: "user", content: text}],
-                temperature: 0.7
-            })
-        });
-        const data = await res.json();
-        return data.choices?.[0]?.message?.content || "Error";
+        if(!STATE.config.key) return alert('请先在悬浮球面板->设置中配置API Key');
+
+        const slice = chat.slice(start, end+1);
+        if(!slice.length) return alert('该范围内无消息');
+        const text = slice.map(m => `${m.name}: ${m.mes}`).join('\n');
+
+        btn.innerText = '生成中...';
+        btn.disabled = true;
+
+        try {
+            const url = STATE.config.url.replace(/\/+$/, '');
+            const ep = url.includes('v1') ? `${url}/chat/completions` : `${url}/v1/chat/completions`;
+            const res = await fetch(ep, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${STATE.config.key}`},
+                body: JSON.stringify({
+                    model: STATE.config.model,
+                    messages: [{role:"system",content:STATE.config.prompt}, {role:"user",content:text}],
+                    temperature: 0.7
+                })
+            });
+            const data = await res.json();
+            const result = data.choices?.[0]?.message?.content || "API Error";
+            $(outId).value = result;
+            
+            // 存入历史
+            STATE.history.unshift({time:new Date().toLocaleTimeString(), content: result});
+            localStorage.setItem('ss_history', JSON.stringify(STATE.history));
+            if(window.renderHist) window.renderHist();
+
+        } catch(e) { $(outId).value = "Error: "+e.message; }
+        btn.innerText = '立即总结';
+        btn.disabled = false;
     }
 
     function bindMainEvents() {
-        const panel = $('ss-panel');
-        // 拖拽逻辑
-        let isDragging=false, offX=0, offY=0;
-        const ball = $('ss-float-btn');
-        ball.addEventListener('touchstart', e=>{ isDragging=true; offX=e.touches[0].clientX-ball.offsetLeft; offY=e.touches[0].clientY-ball.offsetTop; });
-        document.addEventListener('touchmove', e=>{ if(isDragging){ e.preventDefault(); ball.style.left=(e.touches[0].clientX-offX)+'px'; ball.style.top=(e.touches[0].clientY-offY)+'px'; ball.style.right='auto'; ball.style.bottom='auto'; } }, {passive:false});
-        document.addEventListener('touchend', ()=>isDragging=false);
-        ball.onclick = (e) => { if(!isDragging) panel.style.display = 'flex'; };
+        // 面板拖拽与开关
+        const ball=$('ss-float-btn'), panel=$('ss-panel');
+        ball.onclick = () => panel.style.display = 'flex';
         $('ss-close').onclick = () => panel.style.display = 'none';
-
-        // Tab 切换
+        
+        // Tab切换
         document.querySelectorAll('.ss-tab').forEach(t => {
             t.onclick = () => {
                 document.querySelectorAll('.ss-tab').forEach(x => x.classList.remove('active'));
                 document.querySelectorAll('.ss-content').forEach(x => x.classList.remove('active'));
                 t.classList.add('active');
                 $(t.dataset.t).classList.add('active');
-                if(t.dataset.t === 'tab-wb') refreshWB();
-                if(t.dataset.t === 'tab-hist') renderHist();
-            };
+                if(t.dataset.t==='tab-hist') renderHist();
+                if(t.dataset.t==='tab-wb') refreshWB();
+            }
         });
 
-        // 生成总结
-        $('ss-do-sum').onclick = async () => {
-            const btn = $('ss-do-sum');
-            const chat = getChat();
-            const start = parseInt($('ss-start').value)||0;
-            const end = parseInt($('ss-end').value)||(chat.length-1);
-            const slice = chat.slice(start, end+1);
-            if(!slice.length) return alert('范围无效');
-            
-            btn.innerText = '生成中...';
-            try {
-                const text = slice.map(m => `${m.name}: ${m.mes}`).join('\n');
-                const res = await generateSummary(text);
-                $('ss-out').value = res;
-                STATE.history.unshift({id:Date.now(), time:new Date().toLocaleTimeString(), content:res});
-                localStorage.setItem('ss_history', JSON.stringify(STATE.history));
-            } catch(e) { $('ss-out').value = 'Err: ' + e.message; }
-            btn.innerText = '生成总结';
-        };
-                // 隐藏/显示
-        $('ss-do-hide').onclick = () => {
-            const s = parseInt($('ss-hide-s').value), e = parseInt($('ss-hide-e').value);
-            // ST Specific: manipulate DOM or chat object
-            alert('需在ST环境中操作DOM，此处仅演示逻辑');
+        // 主面板功能绑定
+        $('ss-m-gen').onclick = () => doSummary('ss-m-start', 'ss-m-end', 'ss-m-out', 'ss-m-gen');
+        $('ss-set-save').onclick = () => {
+            STATE.config.url = $('ss-set-url').value;
+            STATE.config.key = $('ss-set-key').value;
+            STATE.config.model = $('ss-set-model').value;
+            saveConfig(); alert('配置已保存');
         };
 
-        // 自动托管
-        $('ss-auto-toggle').onchange = (e) => {
-            if(e.target.checked) {
-                STATE.autoTimer = setInterval(() => {
-                    $('ss-auto-status').innerText = `监控中...当前楼层 ${getChat().length}`;
-                }, 5000);
-            } else clearInterval(STATE.autoTimer);
-        };
-
-        // 历史记录
+        // 辅助功能
         window.renderHist = () => {
             const c = $('ss-hist-list'); c.innerHTML = '';
             STATE.history.forEach(h => {
-                const d = document.createElement('div'); d.className = 'ss-history-item';
-                d.innerText = `[${h.time}] ${h.content.slice(0,50)}...`;
-                d.onclick = () => $('ss-out').value = h.content;
+                const d = document.createElement('div'); d.className='ss-history-item';
+                d.innerText = `[${h.time}] ${h.content.slice(0,30)}...`;
+                d.onclick=()=>$('ss-m-out').value=h.content;
                 c.appendChild(d);
             });
         };
-
-        // 世界书
         window.refreshWB = () => {
-            const sel = $('ss-wb-select'); sel.innerHTML = '';
-            const wb = window.world_info || {}; 
-            Object.keys(wb).forEach(k => { const o = document.createElement('option'); o.value=k; o.innerText=k; sel.appendChild(o); });
+            const s=$('ss-wb-select'); s.innerHTML='';
+            const wb = window.world_info || {};
+            Object.keys(wb).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.innerText=k; s.appendChild(o); });
         };
-        $('ss-save-wb').onclick = () => alert('尝试写入世界书 (需ST API支持)');
-
-        // 保存 Prompt
-        $('ss-sync-save').onclick = () => {
-            STATE.config.prompt = $('ss-prompt').value;
-            saveConfig();
-            alert('提示词已保存');
-        };
+        $('ss-save-wb').onclick = () => alert('需ST环境支持写入');
+        $('ss-do-hide').onclick = () => alert('需ST环境支持DOM操作');
     }
 
-    // === 6. 启动 ===
-    setTimeout(() => {
-        injectSidebar();
-        createMainUI();
-    }, 2000);
+    // 启动
+    setTimeout(() => { injectSidebar(); createMainUI(); }, 2000);
 })();
