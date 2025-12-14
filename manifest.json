@@ -1,7 +1,7 @@
 {
-  "display_name": "Silent Summarizer (Safe)",
+  "display_name": "Silent Summarizer (Final)",
   "author": "User",
-  "version": "39.0.0",
+  "version": "40.0.0",
   "js": "index.js",
   "css": "style.css",
   "type": "extension"
