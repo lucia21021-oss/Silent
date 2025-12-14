@@ -1,124 +1,203 @@
-// --- Silent Summary Extension v1.0 ---
+// SillyTavern Extension - Silent Summarizer (Vanilla JS Version)
+// 这是一个自包含的脚本，无需编译即可运行。
+
 (function() {
-    // 1. 创建 UI 容器
-    const rootDiv = document.createElement('div');
-    rootDiv.id = 'ss-root-modal';
-    document.body.appendChild(rootDiv);
+    // === 配置与状态 ===
+    const CONFIG = {
+        url: localStorage.getItem('ss_url') || 'https://api.openai.com/v1',
+        key: localStorage.getItem('ss_key') || '',
+        model: localStorage.getItem('ss_model') || 'gpt-3.5-turbo',
+        prompt: `# 剧情总结助手
+你是一个专业的剧情总结助手。
+## 输出格式
+【核心事件】[一句话概括]
+• [关键情节点1]
+• [关键情节点2]`
+    };
 
-    const floatBtn = document.createElement('div');
-    floatBtn.id = 'ss-float-btn';
-    floatBtn.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>'; // Zap Icon
-    document.body.appendChild(floatBtn);
-
-    // 状态变量
-    let isOpen = false;
-    let activeTab = 0;
-    let settings = { url: "https://api.openai.com/v1", key: "", model: "" };
+    // === HTML 模板构建 ===
+    const UI_HTML = `
+    <div id="ss-float-btn">📝</div>
     
-    // 拖拽逻辑
-    let isDragging = false;
-    let startY = 0;
-    floatBtn.addEventListener('touchstart', (e) => {
-        isDragging = false; startY = e.touches[0].clientY;
-    });
-    floatBtn.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const y = e.touches[0].clientY;
-        if(Math.abs(y - startY) > 5) isDragging = true;
-        floatBtn.style.top = y + 'px';
-    });
-    floatBtn.addEventListener('touchend', (e) => {
-        if(!isDragging) toggleUI();
-    });
-    floatBtn.addEventListener('click', () => { if(!isDragging) toggleUI(); });
+    <div id="ss-panel" class="hidden">
+        <div class="ss-header">
+            <span>剧情助手 (V35)</span>
+            <span class="ss-close-btn" id="ss-close">✖</span>
+        </div>
+        
+        <div class="ss-content" id="tab-summary">
+            <h3>生成总结</h3>
+            <input type="number" id="ss-start" class="ss-input" placeholder="起始楼层 (默认0)">
+            <input type="number" id="ss-end" class="ss-input" placeholder="结束楼层 (默认末尾)">
+            <button id="ss-btn-gen" class="ss-btn ss-btn-primary">生成剧情总结</button>
+            <textarea id="ss-output" class="ss-textarea" placeholder="结果将显示在这里..."></textarea>
+        </div>
 
-    function toggleUI() {
-        isOpen = !isOpen;
-        rootDiv.className = isOpen ? 'active' : '';
-        if(isOpen) renderApp();
-    }
+        <div class="ss-content hidden" id="tab-settings">
+            <h3>API 设置</h3>
+            <label>API 地址</label>
+            <input type="text" id="ss-url" class="ss-input" value="${CONFIG.url}">
+            <label>API Key</label>
+            <input type="password" id="ss-key" class="ss-input" value="${CONFIG.key}">
+            <label>模型名称</label>
+            <input type="text" id="ss-model" class="ss-input" value="${CONFIG.model}">
+            <button id="ss-save" class="ss-btn ss-btn-primary">保存配置</button>
+        </div>
 
- // 渲染主应用
-    function renderApp() {
-        rootDiv.innerHTML = `
-            <div style="height: 50px; background: #111827; border-bottom: 1px solid #374151; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; color: #818cf8; font-weight: bold;">
-                <span>剧情助手 Pro</span>
-                <button id="ss-close" style="background:none; border:none; color:#9ca3af; font-size: 20px;">×</button>
-            </div>
-            
-            <div class="ss-scroll" style="flex: 1; overflow-y: auto; padding: 15px; color: #e5e7eb;">
-                ${renderTabContent()}
-            </div>
+        <div class="ss-tab-bar">
+            <div class="ss-tab active" data-target="tab-summary">总结</div>
+            <div class="ss-tab" data-target="tab-settings">设置</div>
+        </div>
+    </div>
+    `;
 
-            <div style="height: 60px; background: #111827; border-top: 1px solid #374151; display: flex; justify-content: space-around; align-items: center;">
-                ${['总结','隐藏','自动','历史','设置'].map((t,i) => 
-                    `<button class="ss-tab-btn" data-idx="${i}" style="background:none; border:none; color: ${activeTab===i?'#818cf8':'#6b7280'}; font-size: 12px; display:flex; flex-direction:column; align-items:center;">
-                        <span style="font-size:16px; margin-bottom:2px;">${['📝','👁️','⚡','📜','⚙️'][i]}</span>${t}
-                    </button>`
-                ).join('')}
-            </div>
-        `;
+    // === 初始化函数 ===
+    function init() {
+        // 1. 注入 HTML
+        const container = document.createElement('div');
+        container.innerHTML = UI_HTML;
+        document.body.appendChild(container);
 
-        // 绑定事件
-        document.getElementById('ss-close').onclick = toggleUI;
-        document.querySelectorAll('.ss-tab-btn').forEach(b => {
-            b.onclick = () => { activeTab = parseInt(b.dataset.idx); renderApp(); };
+        // 2. 获取 DOM 元素
+        const floatBtn = document.getElementById('ss-float-btn');
+        const panel = document.getElementById('ss-panel');
+        const closeBtn = document.getElementById('ss-close');
+        const tabs = document.querySelectorAll('.ss-tab');
+        
+        // 3. 事件：开关面板
+        floatBtn.addEventListener('click', () => {
+            panel.classList.toggle('hidden');
         });
-        
-        bindTabEvents();
+        closeBtn.addEventListener('click', () => {
+            panel.classList.add('hidden');
+        });
+
+        // 4. 事件：Tab 切换
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // 移除所有激活状态
+                document.querySelectorAll('.ss-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.ss-content').forEach(c => c.classList.add('hidden'));
+                
+                // 激活当前
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.target).classList.remove('hidden');
+            });
+        });
+
+        // 5. 事件：保存设置
+        document.getElementById('ss-save').addEventListener('click', () => {
+            const url = document.getElementById('ss-url').value;
+            const key = document.getElementById('ss-key').value;
+            const model = document.getElementById('ss-model').value;
+
+            localStorage.setItem('ss_url', url);
+            localStorage.setItem('ss_key', key);
+            localStorage.setItem('ss_model', model);
+            
+            CONFIG.url = url; CONFIG.key = key; CONFIG.model = model;
+            alert('配置已保存！');
+        });
+
+        // 6. 事件：生成总结 (核心逻辑)
+        document.getElementById('ss-btn-gen').addEventListener('click', async () => {
+            const btn = document.getElementById('ss-btn-gen');
+            const output = document.getElementById('ss-output');
+            
+            // 获取 SillyTavern 的聊天记录
+            // 注意：window.chat 是 SillyTavern 全局变量，如果没有则使用模拟数据
+            let chatLog = [];
+            if (typeof window.SillyTavern !== 'undefined' && window.SillyTavern.getContext) {
+                chatLog = window.SillyTavern.getContext().chat; 
+            } else if (window.chat) {
+                chatLog = window.chat;
+            } else {
+                output.value = "未找到 SillyTavern 聊天记录 (window.chat 未定义)";
+                return;
+            }
+
+            // 计算范围
+            let start = parseInt(document.getElementById('ss-start').value) || 0;
+            let end = parseInt(document.getElementById('ss-end').value) || (chatLog.length - 1);
+            
+            // 提取文本
+            const slice = chatLog.slice(start, end + 1);
+            if (slice.length === 0) {
+                alert('所选范围内没有消息');
+                return;
+            }
+
+            const textContent = slice.map(msg => `${msg.name}: ${msg.mes}`).join('\n');
+            
+            // UI 状态更新
+            btn.innerText = "生成中...";
+            btn.disabled = true;
+            output.value = "正在请求 API...";
+
+            try {
+                const result = await callApi(textContent);
+                output.value = result;
+            } catch (err) {
+                output.value = "错误: " + err.message;
+            } finally {
+                btn.innerText = "生成剧情总结";
+                btn.disabled = false;
+            }
+        });
+
+        // 7. 悬浮球拖拽逻辑 (简单版)
+        let isDragging = false;
+        let dragOffsets = { x: 0, y: 0 };
+
+        floatBtn.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            const touch = e.touches[0];
+            dragOffsets.x = touch.clientX - floatBtn.getBoundingClientRect().left;
+            dragOffsets.y = touch.clientY - floatBtn.getBoundingClientRect().top;
+        }, {passive: false});
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const touch = e.touches[0];
+            floatBtn.style.left = (touch.clientX - dragOffsets.x) + 'px';
+            floatBtn.style.top = (touch.clientY - dragOffsets.y) + 'px';
+            floatBtn.style.right = 'auto'; // 清除默认 right
+            e.preventDefault(); // 防止滚动
+        }, {passive: false});
+
+        document.addEventListener('touchend', () => isDragging = false);
     }
 
- function renderTabContent() {
-        if(activeTab === 0) return `
-            <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <input id="ss-start" type="number" placeholder="开始楼层" style="flex:1; background:#1f2937; border:1px solid #374151; color:white; padding:8px; border-radius:6px;">
-                <input id="ss-end" type="number" placeholder="结束楼层" style="flex:1; background:#1f2937; border:1px solid #374151; color:white; padding:8px; border-radius:6px;">
-            </div>
-            <button id="ss-gen-btn" style="width:100%; background:#4f46e5; color:white; padding:12px; border:none; border-radius:8px; font-weight:bold; margin-bottom:10px;">生成总结</button>
-            <textarea id="ss-output" style="width:100%; height:150px; background:rgba(0,0,0,0.3); border:1px solid #374151; color:#d1d5db; padding:8px; border-radius:6px;"></textarea>
-        `;
+    // === API 调用函数 ===
+    async function callApi(content) {
+        const endpoint = CONFIG.url.endsWith('/') ? CONFIG.url + 'chat/completions' : CONFIG.url + '/chat/completions';
         
-        if(activeTab === 4) return `
-            <div style="background:#1f2937; padding:15px; border-radius:8px;">
-                <h3 style="margin:0 0 10px 0; font-size:14px;">API 设置</h3>
-                <input id="ss-url" value="${settings.url}" placeholder="API Endpoint" style="width:100%; margin-bottom:10px; padding:8px; background:#111827; border:1px solid #374151; color:white; border-radius:4px;">
-                <input id="ss-key" type="password" value="${settings.key}" placeholder="API Key" style="width:100%; margin-bottom:10px; padding:8px; background:#111827; border:1px solid #374151; color:white; border-radius:4px;">
-                <button id="ss-save-set" style="width:100%; background:#059669; color:white; padding:10px; border:none; border-radius:6px;">保存配置</button>
-            </div>
-        `;
-        
-        return `<div style="text-align:center; color:#6b7280; padding:20px;">功能开发中...</div>`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.key}`
+            },
+            body: JSON.stringify({
+                model: CONFIG.model,
+                messages: [
+                    { role: "system", content: CONFIG.prompt },
+                    { role: "user", content: content }
+                ],
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0].message.content;
     }
 
-    function bindTabEvents() {
-        if(activeTab === 0) {
-            document.getElementById('ss-gen-btn').onclick = async () => {
-                const btn = document.getElementById('ss-gen-btn');
-                const out = document.getElementById('ss-output');
-                btn.innerText = "生成中...";
-                try {
-                    // 这里模拟获取 SillyTavern 上下文 (实际需替换为 ST API)
-                    const prompt = "请总结剧情。"; 
-                    const res = await fetch(`${settings.url}/chat/completions`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${settings.key}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            model: settings.model || 'gpt-3.5-turbo',
-                            messages: [{role: 'user', content: prompt}]
-                        })
-                    });
-                    const data = await res.json();
-                    out.value = data.choices[0].message.content;
-                } catch(e) { out.value = "错误: " + e.message; }
-                btn.innerText = "生成总结";
-            };
-        }
-        if(activeTab === 4) {
-            document.getElementById('ss-save-set').onclick = () => {
-                settings.url = document.getElementById('ss-url').value;
-                settings.key = document.getElementById('ss-key').value;
-                alert("设置已保存");
-            };
-        }
-    }
+    // 启动扩展
+    // 稍微延迟一下确保 ST 加载完毕
+    setTimeout(init, 2000);
+
 })();
