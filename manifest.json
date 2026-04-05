@@ -1,8 +1,8 @@
 {
-  "display_name": "Silent Summarizer (Final)",
-  "author": "User",
-  "version": "42.0.0",
-  "js": "index.js",
-  "css": "style.css",
-  "type": "extension"
+    "display_name": "Silent Summarizer",
+    "author": "User",
+    "version": "36.0.0",
+    "js": "index.js",
+    "css": "style.css",
+    "description": "v36 - 使用原生函数保存世界书"
 }
