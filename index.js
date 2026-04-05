@@ -1,269 +1,364 @@
-(function() {
-    try {
-    // === Part 1: Init ===
-    const DEFAULT_PROMPT = `# 剧情总结助手
+import { extension_settings, getContext } from "../../../extensions.js";
+import { saveSettingsDebounced } from "../../../../script.js";
 
-你是一个专业的剧情总结助手，负责分析对话文本并生成结构化的剧情总结。
+const extensionName = "silent_summarizer";
+const scriptUrl = import.meta.url;
+const extensionFolderPath = scriptUrl.substring(0, scriptUrl.lastIndexOf('/'));
 
-## 处理规则
-1. 自动识别连续的剧情对话，忽略角色设定、系统指令、OOC内容等非剧情部分
-2. 以最近的连贯剧情段落作为总结范围
-3. 保持第三人称客观叙述视角
-4. 忽略重复性日常细节，但对于NSFW内容请保持客观描述，不过度夸张也不一笔带过。
-5. 合并零散对话为连贯叙述。
-
-## 输出格式
-严格按照以下格式输出，不添加任何额外内容：
+// v16 核心提示词
+const SYSTEM_PROMPT = `请将提供的对话内容总结为按时间顺序排列的核心事件列表。
 
 【核心事件】[用一句话概括核心主题]
 
-• [第一关键情节点：包含主要人物动作、关键对话及情感变化，使用完整叙述句]
-• [第二关键情节点：包含主要人物动作、关键对话及情感变化，使用完整叙述句]
+• [第一关键情节点：包含主要人物动作、关键对话及情感变化]
+• [第二关键情节点：包含主要人物动作、关键对话及情感变化]
 • [后续关键情节点：保持同样格式，按时间顺序排列]
 
-## 强制要求
-- 必须输出总结，不得继续编写剧情
-- 必须严格使用指定格式
-- 必须基于提供的文本内容
-- 必须保持第三人称客观叙述`;
-    const STATE = {
-        config: {
-            url: localStorage.getItem('ss_url') || 'https://api.openai.com/v1',
-            key: localStorage.getItem('ss_key') || '',
-            model: localStorage.getItem('ss_model') || 'gpt-3.5-turbo',
-            customPrompt: localStorage.getItem('ss_custom_prompt') || ''
-        },
-        history: JSON.parse(localStorage.getItem('ss_history') || '[]'),
-        modelsList: []
-    };
+要求：
+1. 只提取推动剧情发展的核心事件
+2. 每个情节点用完整叙述句描述
+3. 保持第三人称客观视角
+4. 忽略重复性日常细节，但对于NSFW内容请保持客观描述。`;
 
-    if(!document.getElementById('ss-styles')) {
-        const style = document.createElement('style');
-        style.id = 'ss-styles';
-        style.textContent = `/* 1. 侧边栏样式 (SillyTavern 原生风格) */.ss-drawer-content { padding: 8px; background: rgba(0,0,0,0.2); }.ss-setting-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }.ss-full-input { width: 100%; background: #ffffff; color: #000; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px; }.ss-btn-sidebar { flex: 1; background: #374151; color: #eee; border: 1px solid #4b5563; padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap:4px; transition: background 0.2s; }.ss-btn-sidebar:hover { background: #4b5563; }.ss-btn-action { background: #1f2937; margin-bottom: 8px; width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; color: white; font-weight: bold; font-size: 13px; }.ss-btn-primary { background: #4f46e5; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }/* 2. 主面板样式 (绝对居中) */#ss-panel {    position: fixed;     top: 50%; left: 50%;     transform: translate(-50%, -50%); /* 核心修复：居中 */    width: 90%; max-width: 500px;     height: 85vh; max-height: 800px;    background-color: #020617;     border: 1px solid #1f2937;    border-radius: 12px;     box-shadow: 0 0 100px rgba(0,0,0,0.9);    z-index: 2147483647; /*哪怕天塌下来我也要在最上面*/    display: none; flex-direction: column;    color: #e5e7eb; font-family: sans-serif; font-size: 14px;}.ss-header { padding: 15px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; align-items: center; font-weight: bold; flex-shrink: 0; border-radius: 12px 12px 0 0; }.ss-content { flex: 1; overflow-y: auto; padding: 15px; display: none; }.ss-content.active { display: block; }.ss-tab-bar { display: flex; background: #111827; border-top: 1px solid #1f2937; overflow-x: auto; flex-shrink: 0; border-radius: 0 0 12px 12px; }.ss-tab { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; color: #6b7280; cursor: pointer; border-bottom: 3px solid transparent; user-select: none; transition: all 0.2s; }.ss-tab.active { color: #818cf8; background: rgba(79, 70, 229, 0.05); border-bottom-color: #818cf8; }/* 3. 通用控件 */.ss-textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; font-family: inherit; font-size: 13px; }.ss-textarea-light { background: #fff; color: #000; border: 1px solid #ccc; }.ss-textarea-dark { background: rgba(0,0,0,0.3); color: #e5e7eb; border: 1px solid #374151; }.ss-input-dark { width: 100%; background: #1f2937; border: 1px solid #374151; color: white; padding: 8px; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }.ss-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }.ss-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 8px; }`;
-        document.head.appendChild(style);
+const WI_PROMPT = `基于以下剧情总结，生成一个世界书(World Info)条目。
+提取最核心的一个名词（地点/物品/事件/概念）。
+
+输出格式(JSON):
+{
+    "keys": "关键词1, 关键词2",
+    "entry": "详细条目内容...",
+    "depth": 2
+}`;
+
+const defaultSettings = {
+    enabled: true,
+    provider: 'openai',
+    url: 'http://127.0.0.1:5000/v1',
+    apiKey: '',
+    model: 'gpt-3.5-turbo',
+    autoBookName: 'SilentSummaries',
+    systemPrompt: SYSTEM_PROMPT.trim(),
+    autoEnabled: false,
+    autoThreshold: 20,
+    autoKeep: 5
+};
+
+const state = {
+    isOpen: false,
+    activeTab: 'manual',
+    startFloor: '', endFloor: '',
+    summaryResult: '',
+    wiEntries: [], availableBooks: [],
+    expandedCards: new Set()
+};
+
+function getNativeCsrfToken() {
+    // 优先使用导入的 getContext，这是最准确的
+    if (typeof getContext !== 'undefined') return getContext().csrfToken;
+    // 其次尝试全局对象
+    if (window.SillyTavern?.getContext) return window.SillyTavern.getContext().csrfToken;
+    // 最后尝试 Cookie
+    const m = document.cookie.match(/csrf_token=([^;]+)/);
+    return m ? m[1] : null;
+}
+
+async function stFetch(endpoint, options = {}) {
+    const headers = options.headers || {};
+    headers['Content-Type'] = 'application/json';
+    headers['X-Requested-With'] = 'XMLHttpRequest';
+    const token = getNativeCsrfToken();
+    if (token) headers['X-CSRF-Token'] = token;
+    
+    // 关键修复：确保携带凭证
+    const fetchOptions = { ...options, headers, credentials: 'include' };
+    const res = await fetch(endpoint, fetchOptions);
+    if (!res.ok) {
+        if(res.status === 403) throw new Error("CSRF校验失败，请尝试刷新网页");
+        throw new Error(`API Error ${res.status}`);
     }
-    const $ = (id) => document.getElementById(id);
-    const getChat = () => (window.SillyTavern && window.SillyTavern.getContext) ? window.SillyTavern.getContext().chat : (window.chat || []);
-            // === Part 2: Sidebar ===
-    function injectSidebar() {
-        const container = document.getElementById('extensions_settings') || document.getElementById('rm_extensions_block');
-        if (!container) return; // 等待轮询
-        if ($('ss-drawer')) return;
+    return res.json();
+}
 
-        const html = `
-        <div class="inline-drawer" id="ss-drawer">
-            <div class="inline-drawer-header inline-drawer-toggle" id="ss-drawer-header">
-                <b>⚡ 剧情总结助手</b>
-                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down" id="ss-drawer-icon"></div>
-            </div>
-            <div class="inline-drawer-content" id="ss-drawer-content" style="display:none">
-                <button id="ss-sb-open-panel" class="ss-btn-action" style="background:#4f46e5; border:1px solid #4338ca; margin-top:5px;">🖥️ 打开完整面板</button>
-                <div class="ss-setting-row">
-                    <button id="ss-sb-api" class="ss-btn-sidebar" style="background:#3b82f6; border-color:#2563eb; color:white">⚙️ API设置</button>
-                </div>
-                <hr style="border:0; border-top:1px solid #ccc; margin:8px 0; opacity:0.3">
-                <div class="ss-setting-row">
-                    <input id="ss-sb-start" class="ss-full-input" type="number" placeholder="起始(0)">
-                    <input id="ss-sb-end" class="ss-full-input" type="number" placeholder="结束(末)">
-                </div>
-                <button id="ss-sb-gen" class="ss-btn-sidebar" style="width:100%">⚡ 快速生成</button>
-                <textarea id="ss-sb-out" class="ss-textarea ss-textarea-light" style="height:60px; margin-top:5px" placeholder="结果..."></textarea>
-                <button id="ss-sb-copy" class="ss-btn-sidebar" style="width:100%; margin-top:5px">复制结果</button>
-            </div>
-        </div>`;
+function getMessages() {
+    const els = Array.from(document.querySelectorAll('.mes'));
+    return els.map(el => {
+        const id = parseInt(el.getAttribute('mesid'));
+        if (isNaN(id)) return null;
+        if (el.style.display === 'none' || el.classList.contains('hidden')) return { floor: id, isHidden: true };
+        const n = el.querySelector('.name_text');
+        const t = el.querySelector('.mes_text');
+        return { floor: id, sender: n?n.innerText.trim():'?', content: t?t.innerText.trim():'', isHidden: false };
+    }).filter(m => m !== null);
+}
+
+function executeSlash(cmd) {
+    if (window.SillyTavern?.getContext) window.SillyTavern.getContext().executeCommand(cmd);
+    else if (window.executeSlashCommands) window.executeSlashCommands(cmd);
+}
+
+async function callLlmApi(prompt, content) {
+    const settings = extension_settings[extensionName];
+    const { apiKey, url, provider, model } = settings;
+    if (!url) throw new Error("URL未设置");
+    
+    let target = url;
+    let body = {};
+    let headers = { 'Content-Type': 'application/json' };
+    
+    if (provider === 'gemini') {
+        if(!url.includes('key=') && apiKey) target = `${url}?key=${apiKey}`;
+        body = { contents: [{ role: "user", parts: [{ text: content }] }], systemInstruction: { parts: [{ text: prompt }] } };
+    } else {
+        if(!target.endsWith('/chat/completions') && provider!=='openai') target = target.replace(/\/$/, '')+'/chat/completions';
+        if(apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+        body = { model: model||'gpt-3.5-turbo', messages: [{role:'system',content:prompt}, {role:'user',content:content}] };
+    }
+    
+    const res = await fetch(target, { method:'POST', headers, body: JSON.stringify(body) });
+    const data = await res.json();
+    if(data.error) throw new Error(JSON.stringify(data.error));
+    const txt = provider==='gemini' ? data.candidates?.[0]?.content?.parts?.[0]?.text : data.choices?.[0]?.message?.content;
+    if(!txt) throw new Error("API返回空");
+    return txt;
+}
+
+async function performSummary(s, e) {
+    const msgs = getMessages().filter(m => m.floor >= s && m.floor <= e && !m.isHidden);
+    if(!msgs.length) throw new Error("范围内无消息");
+    const text = msgs.map(m => `${m.sender}: ${m.content}`).join('\n');
+    return await callLlmApi(extension_settings[extensionName].systemPrompt, text);
+}
+
+async function performWiInjection(content, book) {
+    if(!book) book = "SilentSummaries";
+    let entry = { keys: "Summary", entry: content, depth: 2 };
+    try {
+        const raw = await callLlmApi(WI_PROMPT, content);
+        const json = JSON.parse(raw.match(/\{.*\}/s)?.[0] || raw);
+        entry = { ...entry, ...json };
+    } catch(e) {}
+    
+    try {
+        const newEntry = {
+            name: entry.keys.split(',')[0] || "Summary",
+            content: entry.entry,
+            strategy: {
+                type: 'selective',
+                keys: entry.keys.split(',').map(k => k.trim())
+            },
+            position: {
+                type: 'at_depth',
+                depth: entry.depth || 2
+            }
+        };
         
-        const div = document.createElement('div');
-        div.innerHTML = html;
-        container.appendChild(div);
-
-        $('ss-drawer-header').onclick = () => {
-            const c = $('ss-drawer-content');
-            const icon = $('ss-drawer-icon');
-            const hidden = c.style.display === 'none';
-            c.style.display = hidden ? 'block' : 'none';
-            icon.className = hidden ? 'inline-drawer-icon fa-solid fa-circle-chevron-up' : 'inline-drawer-icon fa-solid fa-circle-chevron-down';
-        };
-        $('ss-sb-open-panel').onclick = () => { createMainUI(); $('ss-panel').style.display = 'flex'; window.ssActivateTab('tab-sum'); };
-        $('ss-sb-api').onclick = () => { createMainUI(); $('ss-panel').style.display = 'flex'; window.ssActivateTab('tab-set'); };
-        $('ss-sb-gen').onclick = () => doSummary('ss-sb-start', 'ss-sb-end', 'ss-sb-out', 'ss-sb-gen');
-        $('ss-sb-copy').onclick = () => { navigator.clipboard.writeText($('ss-sb-out').value); alert('已复制'); };
-    }
-            // === Part 3: UI ===
-    function createMainUI() {
-        if ($('ss-panel')) return;
-        const root = document.createElement('div');
-        root.innerHTML = `
-        <div id="ss-panel">
-            <div class="ss-header">
-                <span>⚡ 剧情总结助手</span>
-                <span id="ss-close" style="cursor:pointer; padding:8px;">✖</span>
-            </div>
-            <div class="ss-content active" id="tab-sum">
-                <div class="ss-setting-row">
-                    <input id="ss-m-start" class="ss-input-dark" type="number" placeholder="起始层">
-                    <input id="ss-m-end" class="ss-input-dark" type="number" placeholder="结束层">
-                </div>
-                <button id="ss-m-gen" class="ss-btn-primary">生成详细总结</button>
-                <textarea id="ss-m-out" class="ss-textarea ss-textarea-dark" style="height:300px; margin-top:10px"></textarea>
-            </div>
-            <div class="ss-content" id="tab-hide">
-                <div class="ss-label">批量隐藏楼层</div>
-                <input id="ss-hide-s" class="ss-input-dark" placeholder="起始楼层 ID">
-                <input id="ss-hide-e" class="ss-input-dark" placeholder="结束楼层 ID">
-                <button id="ss-do-hide" class="ss-btn-primary" style="background:#b91c1c;">执行隐藏</button>
-            </div>
-            <div class="ss-content" id="tab-auto">
-                <div class="ss-setting-row" style="color:white;">
-                    <input type="checkbox" id="ss-auto-toggle" style="width:20px; height:20px"> <span>启用自动后台总结</span>
-                </div>
-                <div class="ss-label">触发间隔 (每N层)</div>
-                <input id="ss-auto-int" type="number" class="ss-input-dark" value="30">
-            </div>
-            <div class="ss-content" id="tab-hist">
-                <div id="ss-hist-list"></div>
-            </div>
-            <div class="ss-content" id="tab-wb">
-                <div class="ss-label">目标世界书</div>
-                <select id="ss-wb-select" class="ss-input-dark"></select>
-                <div class="ss-label">关键词</div>
-                <input id="ss-wb-keys" class="ss-input-dark" value="summary">
-                <button id="ss-save-wb" class="ss-btn-primary">存入世界书</button>
-            </div>
-            <div class="ss-content" id="tab-set">
-                <div class="ss-label" style="margin-top:0">配置存档</div>
-                <div class="ss-btn-group">
-                    <button class="ss-btn-sidebar" onclick="window.ssLoadProfile(1)">存档1</button>
-                    <button class="ss-btn-sidebar" onclick="window.ssLoadProfile(2)">存档2</button>
-                    <button class="ss-btn-sidebar" onclick="window.ssLoadProfile(3)">存档3</button>
-                    <button class="ss-btn-sidebar" onclick="window.ssLoadProfile(4)">存档4</button>
-                    <button class="ss-btn-sidebar" onclick="window.ssLoadProfile(5)">存档5</button>
-                </div>
-                <button class="ss-btn-primary" style="background:#059669; height:30px; font-size:12px; margin-bottom:15px" onclick="window.ssSaveProfile()">保存当前配置</button>
-                <div class="ss-label">API Endpoint</div>
-                <input id="ss-set-url" class="ss-input-dark" value="${STATE.config.url}">
-                <div class="ss-label">API Key</div>
-                <input id="ss-set-key" class="ss-input-dark" type="password" value="${STATE.config.key}">
-                <button id="ss-fetch-models" class="ss-btn-primary" style="margin-top:5px">📡 获取模型列表</button>
-                <select id="ss-model-select" class="ss-input-dark" style="display:none; margin-top:5px"></select>
-                <input id="ss-set-model" class="ss-input-dark" value="${STATE.config.model}" placeholder="模型名称" style="margin-top:5px">
-                <div class="ss-label">系统提示词</div>
-                <textarea id="ss-set-prompt" class="ss-textarea ss-textarea-dark" style="height:100px">${STATE.config.customPrompt}</textarea>
-                <button id="ss-save-prompt" class="ss-btn-primary" style="margin-top:5px">仅保存提示词</button>
-            </div>
-            <div class="ss-tab-bar">
-                <div class="ss-tab active" data-t="tab-sum">总结</div>
-                <div class="ss-tab" data-t="tab-hide">隐藏</div>
-                <div class="ss-tab" data-t="tab-auto">自动</div>
-                <div class="ss-tab" data-t="tab-hist">历史</div>
-                <div class="ss-tab" data-t="tab-wb">世界书</div>
-                <div class="ss-tab" data-t="tab-set">设置</div>
-            </div>
-        </div>`;
-        document.body.appendChild(root);
-        bindMainEvents();
-    }
-            // === Part 4: Logic ===
-    let currentSlot = 1;
-    window.ssLoadProfile = (id) => {
-        currentSlot = id;
-        const raw = localStorage.getItem('ss_profile_'+id);
-        if(raw) {
-            const p = JSON.parse(raw);
-            $('ss-set-url').value = p.url || '';
-            $('ss-set-key').value = p.key || '';
-            $('ss-set-model').value = p.model || '';
-            alert('已加载存档 '+id);
-        } else alert('存档 '+id+' 为空');
-    };
-    window.ssSaveProfile = () => {
-        const p = { url: $('ss-set-url').value, key: $('ss-set-key').value, model: $('ss-set-model').value };
-        localStorage.setItem('ss_profile_'+currentSlot, JSON.stringify(p));
-        STATE.config.url = p.url; STATE.config.key = p.key; STATE.config.model = p.model;
-        localStorage.setItem('ss_url', p.url); localStorage.setItem('ss_key', p.key); localStorage.setItem('ss_model', p.model);
-        alert('已保存至存档 '+currentSlot);
-    };
-    async function fetchModels() {
-        const url = $('ss-set-url').value.replace(/\/+$/, '');
-        const key = $('ss-set-key').value;
-        const btn = $('ss-fetch-models');
-        if(!url) return alert('请先输入API URL');
-        btn.innerText = '获取中...';
-        try {
-            const ep = url.includes('v1') ? `${url}/models` : `${url}/v1/models`;
-            const res = await fetch(ep, { headers: { 'Authorization': `Bearer ${key}` } });
-            const data = await res.json();
-            const list = (data.data || data).map(m => m.id || m);
-            const sel = $('ss-model-select'); sel.innerHTML = ''; sel.style.display = 'block';
-            list.forEach(m => { const opt = document.createElement('option'); opt.value = m; opt.innerText = m; sel.appendChild(opt); });
-            sel.onchange = () => $('ss-set-model').value = sel.value;
-            alert(`获取成功，共 ${list.length} 个模型`);
-        } catch(e) { alert('获取失败: '+e.message); }
-        btn.innerText = '📡 获取模型列表';
-    }
-    async function doSummary(sId, eId, oId, btnId) {
-        if(!STATE.config.key) return alert('请先配置Key');
-        const chat = getChat();
-        const start = parseInt($(sId).value)||0;
-        const end = parseInt($(eId).value)||(chat.length-1);
-        const slice = chat.slice(start, end+1);
-        if(!slice.length) return alert('该范围无内容');
-        const btn = $(btnId); const originTxt = btn.innerText;
-        btn.innerText = '生成中...'; btn.disabled=true;
-        const finalPrompt = STATE.config.customPrompt.trim() || DEFAULT_PROMPT;
-        try {
-            const url = STATE.config.url.replace(/\/+$/, '');
-            const ep = url.includes('v1') ? `${url}/chat/completions` : `${url}/v1/chat/completions`;
-            const res = await fetch(ep, {
-                method:'POST',
-                headers:{'Content-Type':'application/json', 'Authorization':`Bearer ${STATE.config.key}`},
-                body:JSON.stringify({
-                    model: STATE.config.model,
-                    messages:[{role:"system", content:finalPrompt}, {role:"user", content:slice.map(m=>`${m.name}: ${m.mes}`).join('\n')}],
-                    temperature:0.7
-                })
-            });
-            const d = await res.json();
-            const txt = d.choices?.[0]?.message?.content || "API Error";
-            $(oId).value = txt;
-            STATE.history.unshift({time:new Date().toLocaleTimeString(), content:txt});
-            localStorage.setItem('ss_history', JSON.stringify(STATE.history));
-            if(window.renderHist) window.renderHist();
-        } catch(e) { $(oId).value = "Error: "+e.message; }
-        btn.innerText = originTxt; btn.disabled=false;
-    }
-            // === Part 5: Boot ===
-    function bindMainEvents() {
-        $('ss-close').onclick = () => $('ss-panel').style.display = 'none';
-        $('ss-m-gen').onclick = () => doSummary('ss-m-start', 'ss-m-end', 'ss-m-out', 'ss-m-gen');
-        $('ss-fetch-models').onclick = fetchModels;
-        $('ss-save-prompt').onclick = () => { STATE.config.customPrompt = $('ss-set-prompt').value; localStorage.setItem('ss_custom_prompt', STATE.config.customPrompt); alert('提示词已更新'); };
+        // 确保世界书存在
+        let books = [];
+        if (typeof getWorldbookNames === 'function') {
+            books = getWorldbookNames();
+        } else if (window.getWorldbookNames) {
+            books = window.getWorldbookNames();
+        }
         
-        window.ssActivateTab = (tabId) => {
-            document.querySelectorAll('.ss-tab').forEach(t => t.dataset.t === tabId ? t.classList.add('active') : t.classList.remove('active'));
-            document.querySelectorAll('.ss-content').forEach(c => c.id === tabId ? c.classList.add('active') : c.classList.remove('active'));
-        };
-        document.querySelectorAll('.ss-tab').forEach(t => t.onclick = () => { window.ssActivateTab(t.dataset.t); if(t.dataset.t==='tab-hist') window.renderHist(); if(t.dataset.t==='tab-wb') window.refreshWB(); });
+        if (!books.includes(book)) {
+            if (typeof createWorldbook === 'function') {
+                await createWorldbook(book, []);
+            } else if (window.createWorldbook) {
+                await window.createWorldbook(book, []);
+            }
+        }
         
-        window.renderHist = () => {
-            const c=$('ss-hist-list'); c.innerHTML='';
-            STATE.history.forEach(h=>{
-                const d=document.createElement('div'); d.className='ss-hist-item';
-                d.innerHTML=`<b>${h.time}</b><div style="font-size:11px;color:#aaa;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${h.content}</div>`;
-                d.onclick=()=>$('ss-m-out').value=h.content; c.appendChild(d);
-            });
-        };
-        window.refreshWB = () => {
-            const s=$('ss-wb-select'); s.innerHTML='';
-            const wb = window.world_info || {};
-            Object.keys(wb).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.innerText=k; s.appendChild(o); });
-        };
-        $('ss-save-wb').onclick = () => alert('需ST环境支持');
+        // 插入条目
+        if (typeof createWorldbookEntries === 'function') {
+            await createWorldbookEntries(book, [newEntry]);
+        } else if (window.createWorldbookEntries) {
+            await window.createWorldbookEntries(book, [newEntry]);
+        } else {
+            throw new Error("找不到 createWorldbookEntries 函数，请确保 SillyTavern 版本支持");
+        }
+        
+        alert(`✅ 已存入: ${book}`);
+    } catch (err) {
+        console.error(err);
+        alert("保存到世界书失败: " + err.message);
     }
+}
 
-    // 强力启动：每秒检查一次，确保侧边栏存在
-    setInterval(injectSidebar, 1000);
-    setTimeout(createMainUI, 2000);
+// --- UI: Tab 1 & 2 (Manual/Auto) ---
+async function renderTab(tab) {
+    const c = document.getElementById('ss-tab-content');
+    const S = extension_settings[extensionName];
+    c.innerHTML = '';
 
-    } catch(err) { console.error("SS Error:", err); }
-})();
+    if (tab === 'manual') {
+        c.innerHTML = `
+            <div class="ss-card">
+                <label class="ss-label">范围</label>
+                <div style="display:flex;gap:5px"><input id="ss-s" class="ss-input" type="number" value="${state.startFloor}"><input id="ss-e" class="ss-input" type="number" value="${state.endFloor}"></div>
+                <button id="ss-gen" class="ss-btn">✨ 开始总结</button>
+            </div>
+            ${state.summaryResult ? `
+                <div class="ss-card" style="border-color:#7c3aed">
+                    <textarea class="ss-input" style="height:100px">${state.summaryResult}</textarea>
+                    <button id="ss-save" class="ss-btn green">📂 存入世界书</button>
+                    <button id="ss-hide" class="ss-btn gray">🙈 隐藏楼层</button>
+                </div>`:''}
+            <button id="ss-unhide" class="ss-btn gray">显示隐藏楼层</button>
+        `;
+        c.querySelector('#ss-s').oninput=e=>state.startFloor=e.target.value;
+        c.querySelector('#ss-e').oninput=e=>state.endFloor=e.target.value;
+        c.querySelector('#ss-gen').onclick=async(e)=>{
+            e.target.innerText='...'; try{state.summaryResult=await performSummary(state.startFloor,state.endFloor);renderTab('manual');}catch(err){alert(err.message);renderTab('manual');}
+        };
+        if(state.summaryResult){
+            c.querySelector('#ss-save').onclick=()=>performWiInjection(state.summaryResult, S.autoBookName);
+            c.querySelector('#ss-hide').onclick=()=>executeSlash(`/hide ${state.startFloor}-${state.endFloor}`);
+        }
+        c.querySelector('#ss-unhide').onclick=()=>executeSlash('/unhide');
+    }
+    else if (tab === 'auto') {
+        c.innerHTML = `
+            <div class="ss-card">
+                <label><input type="checkbox" id="a-en" ${S.autoEnabled?'checked':''}> 启用自动模式</label>
+                <hr style="border:0;border-top:1px solid #333;margin:10px 0">
+                <label class="ss-label">阈值</label><input id="a-th" class="ss-input" type="number" value="${S.autoThreshold}">
+                <label class="ss-label">保留</label><input id="a-kp" class="ss-input" type="number" value="${S.autoKeep}">
+                <label class="ss-label">书名</label><input id="a-bn" class="ss-input" value="${S.autoBookName}">
+                <button id="a-save" class="ss-btn">保存设置</button>
+            </div>
+        `;
+        c.querySelector('#a-save').onclick=()=>{
+            S.autoEnabled=c.querySelector('#a-en').checked;
+            S.autoThreshold=c.querySelector('#a-th').value;
+            S.autoKeep=c.querySelector('#a-kp').value;
+            S.autoBookName=c.querySelector('#a-bn').value;
+            saveSettingsDebounced(); alert("已保存");
+        };
+    }
+    // (Next part...)
+
+    // --- UI: Tab 3, 4, 5 ---
+    else if (tab === 'wi') {
+        try { 
+            if (typeof getWorldbookNames === 'function') {
+                state.availableBooks = getWorldbookNames();
+            } else if (window.getWorldbookNames) {
+                state.availableBooks = window.getWorldbookNames();
+            }
+        } catch(e) { console.error(e); }
+        
+        const opts = state.availableBooks.map(b=>`<option value="${b}" ${b===S.autoBookName?'selected':''}>${b}</option>`).join('');
+        c.innerHTML = `<div class="ss-card"><select id="w-sel" class="ss-input">${opts}</select><button id="w-load" class="ss-btn gray">刷新内容</button></div><div id="w-list"></div>`;
+        c.querySelector('#w-sel').onchange=e=>{S.autoBookName=e.target.value;saveSettingsDebounced();};
+        const load=async()=>{
+            const l=c.querySelector('#w-list'); l.innerHTML='Loading...';
+            try{
+                let entries = [];
+                if (typeof getWorldbook === 'function') {
+                    entries = await getWorldbook(S.autoBookName);
+                } else if (window.getWorldbook) {
+                    entries = await window.getWorldbook(S.autoBookName);
+                }
+                
+                l.innerHTML='';
+                [...entries].reverse().forEach(e=>{
+                    const d=document.createElement('div'); d.className='ss-card'; const ex=state.expandedCards.has(e.uid);
+                    const keysStr = e.strategy?.keys ? e.strategy.keys.join(', ') : e.name;
+                    d.innerHTML=`<b>${keysStr.slice(0,20)}</b> ${ex?e.content:'...'}`;
+                    d.onclick=()=>{ ex?state.expandedCards.delete(e.uid):state.expandedCards.add(e.uid); load(); };
+                    l.appendChild(d);
+                });
+            }catch(e){l.innerHTML='Error: ' + e.message;}
+        };
+        c.querySelector('#w-load').onclick=load; load();
+    }
+    else if (tab === 'data') {
+        c.innerHTML = `
+            <div class="ss-card"><label class="ss-label">导入配置 (JSON)</label><textarea id="d-in" class="ss-input"></textarea><button id="d-imp" class="ss-btn green">导入</button></div>
+            <div class="ss-card"><label class="ss-label">导出配置</label><textarea class="ss-input" readonly>${JSON.stringify(S)}</textarea></div>
+        `;
+        c.querySelector('#d-imp').onclick=()=>{ try{Object.assign(S,JSON.parse(c.querySelector('#d-in').value));saveSettingsDebounced();alert("导入成功");}catch(e){alert("格式错误");} };
+    }
+    else if (tab === 'settings') {
+        c.innerHTML=`
+            <div class="ss-card">
+                <label class="ss-label">API URL</label><input id="s-u" class="ss-input" value="${S.url}">
+                <label class="ss-label">API Key</label><input type="password" id="s-k" class="ss-input" value="${S.apiKey}">
+                <label class="ss-label">Prompt</label><textarea id="s-p" class="ss-input" rows="5">${S.systemPrompt}</textarea>
+                <button id="s-save" class="ss-btn">保存</button>
+            </div>
+        `;
+        c.querySelector('#s-save').onclick=()=>{ S.url=c.querySelector('#s-u').value; S.apiKey=c.querySelector('#s-k').value; S.systemPrompt=c.querySelector('#s-p').value; saveSettingsDebounced(); alert("已保存"); };
+    }
+}
+
+// --- INIT ---
+function createUI() {
+    if (document.getElementById('ss-root')) return;
+    const root = document.createElement('div'); root.id = 'ss-root'; document.body.appendChild(root);
+    
+    // Float Button
+    const btn = document.createElement('div'); btn.id='ss-float-btn'; btn.innerHTML='📝'; root.appendChild(btn);
+    
+    // Overlay
+    const ol = document.createElement('div'); ol.className='ss-modal-overlay';
+    ol.innerHTML = `
+        <div class="ss-modal">
+            <div style="padding:10px;background:#111;display:flex;justify-content:space-between;align-items:center"><b>SS v36</b><span id="ss-x" style="padding:5px">×</span></div>
+            <div class="ss-tabs">
+                <button class="ss-tab active" data-t="manual">手动</button><button class="ss-tab" data-t="auto">自动</button>
+                <button class="ss-tab" data-t="wi">世界书</button><button class="ss-tab" data-t="data">数据</button>
+                <button class="ss-tab" data-t="settings">设置</button>
+            </div>
+            <div class="ss-content" id="ss-tab-content"></div>
+        </div>
+    `;
+    root.appendChild(ol);
+
+    // Events
+    const close=()=>{ ol.style.display='none'; state.isOpen=false; };
+    const open=()=>{ 
+        ol.style.display='flex'; state.isOpen=true; 
+        const m = getMessages();
+        if(m.length) { state.startFloor=m[0].floor; state.endFloor=m[m.length-1].floor; }
+        renderTab('manual');
+    };
+    
+    ol.querySelector('#ss-x').onclick=close;
+    ol.onclick=e=>{if(e.target===ol)close();};
+    btn.onclick=open;
+    window._ss_open_ui=open;
+
+    ol.querySelectorAll('.ss-tab').forEach(t=>{
+        t.onclick=()=>{
+            state.activeTab=t.dataset.t;
+            ol.querySelectorAll('.ss-tab').forEach(x=>x.classList.toggle('active',x.dataset.t===state.activeTab));
+            renderTab(state.activeTab);
+        }
+    });
+}
+
+jQuery(async () => {
+    try {
+        extension_settings[extensionName] = extension_settings[extensionName] || {};
+        for(const k in defaultSettings) if(extension_settings[extensionName][k]===undefined) extension_settings[extensionName][k]=defaultSettings[k];
+
+        const html = await $.get(`${extensionFolderPath}/settings.html`);
+        $("#extensions_settings").append(html);
+        
+        $("#ss_settings_container .inline_drawer_header").click(function(){ $(this).next().slideToggle(); });
+        
+        $("#ss_enabled_cb").prop("checked", extension_settings[extensionName].enabled).on("change", function(){
+            extension_settings[extensionName].enabled = $(this).prop("checked");
+            saveSettingsDebounced();
+            $("#ss-float-btn").toggle($(this).prop("checked"));
+        });
+        
+        $("#ss_open_ui_btn").click(()=>window._ss_open_ui && window._ss_open_ui());
+        
+        createUI();
+        if(!extension_settings[extensionName].enabled) $("#ss-float-btn").hide();
+        console.log("SS v36 Loaded");
+    } catch(e) { console.error("SS Init Error", e); }
+});
+
